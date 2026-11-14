@@ -56,6 +56,16 @@ class ApplianceEvent(EventEntity):
         self.async_on_remove(self.coordinator.add_event_listener(self._handle))
 
     @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep running when the entity ID is changed (Home Assistant 2026.11+).
+
+        Nothing here is keyed on the entity ID, so the entity carries on as is.
+        """
+        parent = getattr(super(), "async_entity_id_changed", None)
+        if parent is not None:
+            parent(old_entity_id)
+
+    @callback
     def _handle(self, event_type: str, attributes: dict[str, Any]) -> None:
         """Fire ``event_type`` when it belongs to this entity."""
         if event_type in self._attr_event_types:

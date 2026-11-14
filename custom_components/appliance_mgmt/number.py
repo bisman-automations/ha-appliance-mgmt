@@ -10,7 +10,7 @@ from __future__ import annotations
 from homeassistant.components.number import NumberMode, RestoreNumber
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .device import attach_to_appliance
@@ -56,6 +56,16 @@ class ProbeTargetNumber(RestoreNumber):
         if last is not None and last.native_value is not None:
             self._attr_native_value = last.native_value
             await self.coordinator.probe.async_set_target(last.native_value)
+
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep running when the entity ID is changed (Home Assistant 2026.11+).
+
+        Nothing here is keyed on the entity ID, so the entity carries on as is.
+        """
+        parent = getattr(super(), "async_entity_id_changed", None)
+        if parent is not None:
+            parent(old_entity_id)
 
     async def async_set_native_value(self, value: float) -> None:
         """Store the target and update the probe Live Activity."""

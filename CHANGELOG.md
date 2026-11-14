@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-11-14
+
+### Changed
+
+- **Renaming an entity keeps it running.** From Home Assistant 2026.11, when you change one of this integration's entity IDs, the entity moves to its new ID in place instead of being removed and added again, as Home Assistant now expects. Everything keeps working the same.
+
 ## [2.0.1] - 2026-11-13
 
 ### Fixed
@@ -566,6 +572,7 @@ Initial release.
 - Status and Progress sensors per appliance for dashboards.
 - `appliance_live_activity.update` service for forcing a manual refresh.
 
+[2.0.2]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v1.14.4...v2.0.0
 [1.14.4]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v1.14.3...v1.14.4
