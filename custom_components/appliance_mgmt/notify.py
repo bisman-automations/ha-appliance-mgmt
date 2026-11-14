@@ -119,7 +119,18 @@ async def async_deliver(
     devices: list[str] | None = None,
     home_filter: bool = False,
 ) -> None:
-    """Send now (quiet hours already checked)."""
+    """Send now (quiet hours already checked).
+
+    While the appliance is muted for today, only critical alerts and clears
+    go out.
+    """
+    if (
+        payload.get("message") != "clear_notification"
+        and ((payload.get("data") or {}).get("push") or {}).get("interruption-level")
+        != "critical"
+        and coordinator.muted
+    ):
+        return
     targets = list(dict.fromkeys(coordinator.devices if devices is None else devices))
     if home_filter and coordinator.home_only:
         # Phones whose owner is home (unknown counts as home); nobody home -> everyone

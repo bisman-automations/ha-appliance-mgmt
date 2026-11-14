@@ -112,6 +112,9 @@ CONF_ACTIVITY_TITLE = "activity_title"
 CONF_LAUNDRY_TITLE = "laundry_title"
 # Dishwasher "clean" sensor: keep "ready to unload" up until the door opens
 CONF_CLEAN_ENTITY = "clean_entity"
+# Energy per cycle (2.1.0): a power (W) or energy (kWh) sensor, and a price
+CONF_ENERGY_ENTITY = "energy_entity"
+CONF_ENERGY_PRICE = "energy_price"
 
 # Cycle events (event entity)
 EVENT_STARTED = "started"

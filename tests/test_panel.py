@@ -67,7 +67,7 @@ async def test_appliances_websocket(
     assert appliance["type"] == "dishwasher"
     assert appliance["type_name"] == "Dishwasher"
     assert appliance["door"] is False
-    assert appliance["image"] is None
+    assert "image" not in appliance
     entities = appliance["entities"]
     assert entities["status"] == "sensor.kitchen_dishwasher_status"
     assert entities["time_left"] == "sensor.kitchen_dishwasher_time_left"
@@ -76,64 +76,6 @@ async def test_appliances_websocket(
     # Newest cycle first.
     assert [c["minutes"] for c in appliance["recent_cycles"]] == [88.5, 92.0]
     assert appliance["alerts"] == []
-
-
-async def test_set_and_clear_picture(
-    hass: HomeAssistant, enable_custom_integrations, hass_ws_client
-):
-    entry = await _setup(hass)
-    client = await hass_ws_client(hass)
-    res = await _ws(
-        client, type=f"{DOMAIN}/image", entry_id=entry.entry_id, image_id="abc123"
-    )
-    assert res["success"]
-    assert res["result"] == {
-        "image": "/api/image/serve/abc123/512x512",
-        "previous_image_id": None,
-    }
-    res = await _ws(client, type=f"{DOMAIN}/appliances")
-    assert res["result"]["appliances"][0]["image"] == "/api/image/serve/abc123/512x512"
-
-    # Replacing it tells the dashboard which picture to delete.
-    res = await _ws(
-        client, type=f"{DOMAIN}/image", entry_id=entry.entry_id, image_id="def456"
-    )
-    assert res["result"]["previous_image_id"] == "abc123"
-    res = await _ws(client, type=f"{DOMAIN}/image", entry_id=entry.entry_id)
-    assert res["result"]["image"] is None
-    res = await _ws(client, type=f"{DOMAIN}/appliances")
-    assert res["result"]["appliances"][0]["image"] is None
-
-    res = await _ws(client, type=f"{DOMAIN}/image", entry_id="nope", image_id="x")
-    assert res["error"]["code"] == "not_found"
-
-
-async def test_pictures_are_kept_across_restarts(
-    hass: HomeAssistant, enable_custom_integrations, hass_storage
-):
-    hass_storage[panel.IMAGES_STORE] = {
-        "version": 1,
-        "key": panel.IMAGES_STORE,
-        "data": {"images": {"placeholder": "img1"}},
-    }
-    await _setup(hass)
-    assert hass.data[panel.DATA_IMAGES].images == {"placeholder": "img1"}
-
-
-async def test_only_admins_change_pictures(
-    hass: HomeAssistant,
-    enable_custom_integrations,
-    hass_ws_client,
-    hass_read_only_access_token,
-):
-    entry = await _setup(hass)
-    client = await hass_ws_client(hass, hass_read_only_access_token)
-    res = await _ws(client, type=f"{DOMAIN}/appliances")
-    assert res["success"] and res["result"]["is_admin"] is False
-    res = await _ws(
-        client, type=f"{DOMAIN}/image", entry_id=entry.entry_id, image_id="abc"
-    )
-    assert res["error"]["code"] == "unauthorized"
 
 
 async def test_maintenance_alerts(hass: HomeAssistant, enable_custom_integrations):

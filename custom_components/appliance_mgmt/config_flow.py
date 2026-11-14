@@ -45,6 +45,8 @@ from .const import (
     CONF_DOOR_ENTITY,
     CONF_DRYER_ENTITY,
     CONF_DRYER_START_ENTITY,
+    CONF_ENERGY_ENTITY,
+    CONF_ENERGY_PRICE,
     CONF_ESCALATE_AFTER,
     CONF_ESCALATION_DEVICES,
     CONF_FILTER_ENTITY,
@@ -203,6 +205,8 @@ def _announce_fields() -> dict:
 
 # Optional fields without defaults: cleared in Configure -> stored as None
 CLEARABLE = (
+    CONF_ENERGY_ENTITY,
+    CONF_ENERGY_PRICE,
     CONF_LEAK_ENTITIES,
     CONF_DRYER_ENTITY,
     CONF_DRYER_START_ENTITY,
@@ -231,6 +235,7 @@ SECTIONS: dict[str, bool] = {
     "leaks": True,
     "announcements": True,
     "quiet_hours": True,
+    "energy": True,
     "appearance": True,
 }
 SECTION_OF: dict[str, str] = {
@@ -260,6 +265,8 @@ SECTION_OF: dict[str, str] = {
     CONF_LEAK_REPEAT_MINUTES: "leaks",
     CONF_TTS_ENTITY: "announcements",
     CONF_SPEAKERS: "announcements",
+    CONF_ENERGY_ENTITY: "energy",
+    CONF_ENERGY_PRICE: "energy",
     CONF_QUIET_START: "quiet_hours",
     CONF_QUIET_END: "quiet_hours",
     CONF_ACTIVITY_TITLE: "appearance",
@@ -542,6 +549,14 @@ def _behaviour_fields(
                 vol.Optional(CONF_QUIET_END): selector.TimeSelector(),
             }
         )
+    # Energy per cycle: a power or energy sensor, and what a kWh costs
+    if appliance_type not in DOOR_TYPES:
+        fields[vol.Optional(CONF_ENERGY_ENTITY)] = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain="sensor", device_class=["power", "energy"]
+            )
+        )
+        fields[vol.Optional(CONF_ENERGY_PRICE)] = _number(0, 10, 0.001, "per kWh")
     return fields
 
 

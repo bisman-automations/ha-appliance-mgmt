@@ -61,11 +61,6 @@ def _old_entry(hass: HomeAssistant, hass_storage) -> MockConfigEntry:
         "key": f"{OLD_DOMAIN}_{old.entry_id}",
         "data": {"total_minutes": 42, "history": []},
     }
-    hass_storage[f"{OLD_DOMAIN}.images"] = {
-        "version": 1,
-        "key": f"{OLD_DOMAIN}.images",
-        "data": {"images": {old.entry_id: "img123"}},
-    }
     return old
 
 
@@ -101,7 +96,6 @@ async def test_moves_everything(
     assert (DOMAIN, entry.entry_id) in device.identifiers
     assert device.name_by_user == "Big Oven"
 
-    assert hass.data[f"{DOMAIN}_images"].images[entry.entry_id] == "img123"
     assert entry.runtime_data._total_minutes == 42
 
 

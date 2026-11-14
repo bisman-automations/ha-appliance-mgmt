@@ -12,7 +12,8 @@ the first start of 2.0.0 everything the old domain had is moved across:
    config flow, with the same title, unique id, data and options, plus
    ``migrated_from`` (the old entry id).
 3. That entry's setup (``async_before_setup``, before the coordinator loads
-   its storage) copies the old entry's stored cycle state and picture.
+   its storage) copies the old entry's stored cycle state (pictures were
+   dropped in 2.1.0).
 4. After our device exists (``async_after_link``), every entity of the old
    entry moves to this entry with ``async_update_entity_platform``. Entity
    ids stay, and with them history, statistics, dashboards and automations
@@ -113,14 +114,6 @@ async def async_before_setup(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await new_store.async_load()
     ) is None:
         await new_store.async_save(data)
-    old_images: Store[dict[str, Any]] = Store(hass, 1, f"{OLD_DOMAIN}.images")
-    image = ((await old_images.async_load() or {}).get("images") or {}).get(old_id)
-    if image:
-        from .panel import DATA_IMAGES  # noqa: PLC0415
-
-        images = hass.data.get(DATA_IMAGES)
-        if images is not None and entry.entry_id not in images.images:
-            await images.async_set(entry.entry_id, image)
 
 
 async def async_after_link(hass: HomeAssistant, entry: ConfigEntry) -> None:

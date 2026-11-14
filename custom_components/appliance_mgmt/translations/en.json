@@ -192,6 +192,18 @@
               "quiet_start": "Leave both empty for no quiet hours."
             }
           },
+          "energy": {
+            "name": "Energy",
+            "description": "How much energy each cycle uses, shown on the Appliance Mgmt dashboard.",
+            "data": {
+              "energy_entity": "Power or energy sensor",
+              "energy_price": "Price of a kWh"
+            },
+            "data_description": {
+              "energy_entity": "A smart plug or energy monitor on this appliance: power in W or kW, or an energy total in kWh. Leave empty to not track energy.",
+              "energy_price": "Optional. With a price, each cycle also shows what it cost, in your Home Assistant currency."
+            }
+          },
           "appearance": {
             "name": "Live Activity title & icon",
             "description": "How the appliance looks on the Live Activity.",
@@ -386,6 +398,18 @@
             },
             "data_description": {
               "quiet_start": "Leave both empty for no quiet hours."
+            }
+          },
+          "energy": {
+            "name": "Energy",
+            "description": "How much energy each cycle uses, shown on the Appliance Mgmt dashboard.",
+            "data": {
+              "energy_entity": "Power or energy sensor",
+              "energy_price": "Price of a kWh"
+            },
+            "data_description": {
+              "energy_entity": "A smart plug or energy monitor on this appliance: power in W or kW, or an energy total in kWh. Leave empty to not track energy.",
+              "energy_price": "Optional. With a price, each cycle also shows what it cost, in your Home Assistant currency."
             }
           },
           "appearance": {

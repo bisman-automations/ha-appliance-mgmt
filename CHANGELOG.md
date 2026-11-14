@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-11-14
+
+### Added
+
+- **Every appliance is drawn, and the drawing moves.** Each card on the dashboard shows a drawing of the appliance in its color that follows what it's doing: the drum turns while a washer or dryer runs, the oven window glows and pulses while it preheats, the burners light up while the cooktop is on, a dishwasher bubbles, and a fridge, freezer or door swings open when it's open. Readings sit right on it: time left on the display, the oven's temperature on the glass, and the fridge and freezer temperatures on their doors, outlined in red when too warm.
+- **A tidier card.** Update Live Activity, Mute for today, Recent cycles and the device page are now in the card's **⋯** menu.
+- **Progress for every running appliance.** Appliances that don't report their progress get a progress bar estimated from their usual cycle length.
+- **Done, still full.** The card says **Done, still full** or **Move it to the dryer** while a finished load is still inside (and **Clean dishes inside** for a dishwasher), with how long it's been waiting. Those appliances now count as needing attention.
+- **Upkeep reminders.** Run a tub clean, clean the dryer vent, clean the dishwasher filter, clean the oven, and replace the fridge's water filter and clean its coils: each shows on the card when it's coming up or due, with a **Done** button. Filter reminders are left out when the appliance reports its filter itself.
+- **Fridge and freezer trends.** Their temperatures over the last 24 hours, with the too-warm limit, and how many times the doors were opened today and for how long (doors show their opens too).
+- **Cycles per day.** A small chart of the last week's cycles; tap a day to see its cycles.
+- **Mute for today.** From the ⋯ menu: no regular alerts and no Live Activity for that appliance until midnight. Critical alerts (a water leak, a fridge too warm, a door left open, the cooktop left on, a blocked dryer vent) still come through.
+- **Energy per cycle.** Pick a smart plug's power or energy sensor, and optionally the price of a kWh, under **Configure** → **Energy**. Each finished cycle then shows the energy it used and what it cost.
+
+### Changed
+
+- **The sidebar page is now called Appliance Mgmt** (it was Appliances). Its address stays the same, so bookmarks and notification links still work.
+
+### Removed
+
+- **Appliance pictures.** Uploading a picture is gone now that every appliance is drawn. Pictures uploaded before are deleted when you update.
+
 ## [2.0.2] - 2026-11-14
 
 ### Changed
@@ -572,6 +594,7 @@ Initial release.
 - Status and Progress sensors per appliance for dashboards.
 - `appliance_live_activity.update` service for forcing a manual refresh.
 
+[2.1.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v1.14.4...v2.0.0

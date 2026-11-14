@@ -70,7 +70,7 @@ Download `appliance_mgmt.zip` from the [latest release](https://github.com/bisma
 ### Upgrading from Appliance Live Activity
 
 Appliance Live Activity was renamed Appliance Mgmt in 2.0.0. Your appliances,
-settings, entities, history and pictures move across by themselves, but the
+settings, entities and history move across by themselves, but the
 Marketplace (HACS) can't make the switch for you: it won't update across the
 rename, and it won't remove Appliance Live Activity while appliances are set
 up with it. So the switch is done by hand, once.
@@ -336,19 +336,28 @@ The name you see is the device name plus the entity: **Kitchen Dishwasher Live A
   activity if it was dismissed from the notification center.
 - `appliance_mgmt.update` re-sends an appliance's Live Activity.
 
-### Appliances dashboard
+### Appliance Mgmt dashboard
 
-**Appliances** in the sidebar lists every appliance you have set up, on one page. The page is added once, when the integration loads, and it stays while you add, reload or remove appliances. Each appliance has a card with:
+**Appliance Mgmt** in the sidebar (before 2.1.0 it was called Appliances) lists every appliance you have set up, on one page. The page is added once, when the integration loads, and it stays while you add, reload or remove appliances. Each appliance has a card with:
 
-- a picture of the appliance, or its icon in its color, with its state on top (Running, Paused, Delayed start, Done or Idle; Open or Closed for doors and fridges);
-- what it's doing now (the cycle phase, when a delayed start begins, when the last load finished, or how long a door has been open), with a progress bar, time left and when it'll be done while it runs;
+- a drawing of the appliance in its color that follows what it's doing: the drum turns while a washer or dryer runs, the oven window glows (and pulses while it preheats) and the burners light up while the cooktop is on, a dishwasher bubbles, and a fridge, freezer or door swings open when it's open. Readings sit on the drawing: time left on the display, the oven's temperature on its glass, the fridge and freezer temperatures on their doors (outlined in red when too warm). Its state is on top (Running, Preheating, Paused, Delayed start, Done or Idle; Open or Closed for doors and fridges), with **Door open** and how long, or **Muted today**;
+- what it's doing now (the cycle phase, when a delayed start begins, when the last load finished, or how long a door has been open), with a progress bar, time left and when it'll be done while it runs. Appliances that don't report progress get an estimate from their usual cycle length;
+- **Done, still full** or **Move it to the dryer** while a finished load is still inside, and **Clean dishes inside** for a dishwasher, with how long it's been waiting;
 - anything that needs you: a water leak, a blocked dryer vent, the cooktop left on, low rinse aid or detergent, a filter to clean or replace, a fridge or freezer too warm, plus the meat probe and kitchen timer;
-- fridge and freezer temperatures, cycles this week, the usual cycle length and the last cycle;
-- **Recent cycles** (the last 10, when each finished and how long it ran), and **Update Live Activity**.
+- **upkeep** when it's coming up or due, with a **Done** button: run a tub clean (washers, every 30 cycles or 2 months), clean the dryer vent (yearly), clean the dishwasher filter (monthly, unless the dishwasher reports it itself), clean the oven (every 3 months), replace the fridge's water filter (every 6 months, unless the fridge reports it itself) and clean its coils (yearly). Each one counts from when you last pressed **Done**, or from the first time the dashboard showed it;
+- cycles this week, the usual cycle length, and energy and cost per cycle (see below) or the last cycle;
+- fridges and freezers: their temperatures over the last 24 hours, with the too-warm limit as a dashed line, and how many times the doors were opened today and for how long (doors show the same). These come from Home Assistant's history, so they need the recorder (on by default);
+- **Cycles per day** for the last week. Tap a day to see its cycles: when each finished, how long it ran, and its energy and cost.
 
-Appliances that are running come first, then ones that need attention (a finished load, an open door, an alert), then the most recently used. With two or more appliances you can search, show only some (running now, needs attention, not running) and sort by name or type instead; the choice is remembered on each device. Tap an appliance's name to open its device page.
+The **⋯** menu on each card has **Update Live Activity**, **Mute for today**, **Recent cycles** and the device page.
 
-Admins can **Add picture** to each appliance from their phone's camera or photos, or change or remove it. Pictures use Home Assistant's own image upload, the same as person pictures (part of `default_config`). Everyone can see the dashboard; only admins can change pictures.
+**Mute for today** stops the appliance's regular alerts and its Live Activity until midnight. Critical alerts still come through: a water leak, a fridge or freezer too warm, a door left open, the cooktop left on and a blocked dryer vent. **Unmute** puts its Live Activity back straight away.
+
+**Energy per cycle**: in the appliance's options (**Configure** → **Energy**), pick the power or energy sensor of a smart plug or energy monitor on the appliance, and optionally what a kWh costs. A power sensor (W or kW) is added up over the cycle; an energy total (kWh) is read at the start and the end. Each finished cycle then shows its energy and cost (in your Home Assistant currency).
+
+Appliances that are running come first, then ones that need attention (a finished load still inside, an open door, an alert, upkeep that's due), then the most recently used. With two or more appliances you can search, show only some (running now, needs attention, not running) and sort by name or type instead; the choice is remembered on each device. Tap an appliance's name to open its device page. Everyone can see the dashboard.
+
+Pictures uploaded before 2.1.0 are deleted when you update: every appliance is drawn now.
 
 ### Matter (Home Assistant Matter Hub)
 

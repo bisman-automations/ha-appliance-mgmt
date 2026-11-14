@@ -55,6 +55,8 @@ from .const import (
     CONF_DOOR_ENTITY,
     CONF_DRYER_ENTITY,
     CONF_DRYER_START_ENTITY,
+    CONF_ENERGY_ENTITY,
+    CONF_ENERGY_PRICE,
     CONF_ESCALATION_DEVICES,
     CONF_FILTER_ENTITY,
     CONF_FINISHED_ALERT,
@@ -113,6 +115,7 @@ from .const import (
     DEFAULT_SUPPLY_LOW,
     DEFAULT_WARM_MINUTES,
     DOMAIN,
+    DOOR_TYPES,
     DRIFT_MINUTES,
     EVENT_CANCELLED,
     EVENT_FINISHED,
@@ -130,6 +133,8 @@ from .const import (
     STATUS_RUNNING,
     STORAGE_VERSION,
 )
+from .dashboard import is_muted
+from .energy import EnergyMeter
 from .helpers import (
     async_entry_background_task,
     async_track_later,
@@ -273,7 +278,23 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         # Event entity + cycle history
         self._event_listeners: list[Any] = []
-        self._history: list[list[float]] = []  # [finished_at, minutes]
+        # [finished_at, minutes] or [finished_at, minutes, kWh]
+        self._history: list[list[float]] = []
+        # Energy per cycle (2.1.0)
+        self.energy_entity: str | None = (
+            cfg.get(CONF_ENERGY_ENTITY) or None
+            if self.appliance_type not in DOOR_TYPES
+            else None
+        )
+        price = cfg.get(CONF_ENERGY_PRICE)
+        self.energy_price: float | None = (
+            float(price) if isinstance(price, (int, float)) and price > 0 else None
+        )
+        self.energy: EnergyMeter | None = (
+            EnergyMeter(hass, self.energy_entity) if self.energy_entity else None
+        )
+        # "Mute for today" ends at midnight (see async_mute_changed)
+        self._unmute_cancel: CALLBACK_TYPE | None = None
         self._cycle_started: float | None = None
         # Tag of the Live Activity this appliance is showing (see activity_tag)
         self._active_tag: str | None = None
@@ -837,9 +858,13 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._dismiss_at = stored.get("dismiss_at")
         self._move_since = stored.get("move_since")
         self._move_count = int(stored.get("move_count", 0) or 0)
-        self._history = [list(h) for h in stored.get("history", []) if len(h) == 2][
-            -HISTORY_MAX:
-        ]
+        self._history = [
+            list(h)
+            for h in stored.get("history", [])
+            if isinstance(h, list) and len(h) in (2, 3)
+        ][-HISTORY_MAX:]
+        if self.energy is not None:
+            self.energy.restore(stored.get("energy"))
         self._cycle_started = stored.get("cycle_started")
         self._active_tag = stored.get("active_tag")
         self._load = stored.get("load")
@@ -871,6 +896,12 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._unsubs.append(
                 async_track_state_change_event(
                     self.hass, tracked, self._handle_state_event
+                )
+            )
+        if self.energy_entity:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, [self.energy_entity], self._handle_energy_event
                 )
             )
         # Only used to notice drift between the appliance's estimate and the
@@ -942,7 +973,50 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @callback
     def _handle_tick(self, _now=None) -> None:
+        if self.energy is not None:
+            self.energy.sample()
         self.async_run(self.async_evaluate(send=True), "evaluate appliance")
+
+    @callback
+    def _handle_energy_event(self, _event: Event) -> None:
+        if self.energy is not None:
+            self.energy.sample()
+
+    # ------------------------------------------------------------------
+    # Mute for today
+    # ------------------------------------------------------------------
+    @property
+    def muted(self) -> bool:
+        """No regular alerts or Live Activity updates until midnight."""
+        return is_muted(self.hass, self.entry.entry_id)
+
+    async def async_mute_changed(self, muted_until: float | None) -> None:
+        """Muted: end the Live Activity and unmute at midnight. Unmuted:
+        show the current state again."""
+        self.schedule_unmute(muted_until)
+        if muted_until is not None:
+            if self.devices:
+                await async_clear(self.hass, self, self.activity_tag)
+        else:
+            await self.async_evaluate(send=True, force=True)
+
+    @callback
+    def schedule_unmute(self, muted_until: float | None) -> None:
+        if self._unmute_cancel is not None:
+            self._unmute_cancel()
+            self._unmute_cancel = None
+        if muted_until is None:
+            return
+        delay = max(0.0, muted_until - dt_util.utcnow().timestamp()) + 1
+
+        @callback
+        def _unmute(_now) -> None:
+            self._unmute_cancel = None
+            self.async_run(
+                self.async_evaluate(send=True, force=True), "resume after mute"
+            )
+
+        self._unmute_cancel = async_track_later(self.hass, self.entry, delay, _unmute)
 
     @callback
     def _handle_action(self, event: Event) -> None:
@@ -1098,10 +1172,10 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def cycles_since(self, days: float) -> int:
         cutoff = dt_util.utcnow().timestamp() - days * 86400
-        return sum(1 for finished_at, _ in self._history if finished_at >= cutoff)
+        return sum(1 for h in self._history if h[0] >= cutoff)
 
     def average_minutes(self) -> float | None:
-        recent = [m for _, m in self._history[-HISTORY_AVERAGE_OF:]]
+        recent = [h[1] for h in self._history[-HISTORY_AVERAGE_OF:]]
         return round(sum(recent) / len(recent)) if recent else None
 
     def _tumbling(self, status: str | None = None) -> bool:
@@ -1315,6 +1389,8 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._total_minutes = remaining
             self._sent_signature = None
             self._cycle_started = dt_util.utcnow().timestamp()
+            if self.energy is not None:
+                self.energy.start()
             await self._async_claim_activity()
             self._start_load(cycle)
             changed = True
@@ -1417,11 +1493,13 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = dt_util.utcnow().timestamp()
         duration = (now - self._cycle_started) / 60 if self._cycle_started else None
         self._cycle_started = None
+        kwh = self.energy.finish() if self.energy is not None else None
         if finished:
             if duration is not None and duration > 0:
-                self._history = (self._history + [[now, round(duration, 1)]])[
-                    -HISTORY_MAX:
-                ]
+                item = [now, round(duration, 1)]
+                if kwh is not None:
+                    item.append(kwh)
+                self._history = (self._history + [item])[-HISTORY_MAX:]
             self.fire_event(
                 EVENT_FINISHED,
                 {
@@ -1678,6 +1756,7 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "move_since": self._move_since,
             "move_count": self._move_count,
             "history": self._history,
+            "energy": self.energy.to_dict() if self.energy is not None else None,
             "cycle_started": self._cycle_started,
             "active_tag": self._active_tag,
             "load": self._load,

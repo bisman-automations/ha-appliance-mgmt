@@ -27,6 +27,7 @@ from .const import (
     SOURCE_GE_HOME,
 )
 from .coordinator import ApplianceConfigEntry, ApplianceCoordinator
+from .dashboard import dashboard_store
 from .door import DoorCoordinator
 from .panel import async_register_panel, async_setup_panel_backend
 from .services import async_setup_services
@@ -179,6 +180,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ApplianceConfigEntry) ->
     try:
         await migrate.async_before_setup(hass, entry)
         await coordinator.async_setup()
+        if (store := dashboard_store(hass)) is not None:
+            coordinator.schedule_unmute(store.muted_until(entry.entry_id))
         from .device import async_link_device  # noqa: PLC0415
 
         async_link_device(hass, coordinator, entry)
@@ -216,3 +219,5 @@ async def async_remove_entry(hass: HomeAssistant, entry: ApplianceConfigEntry) -
     from .health import async_remove_issues  # noqa: PLC0415
 
     async_remove_issues(hass, entry)
+    if (store := dashboard_store(hass)) is not None:
+        store.forget(entry.entry_id)

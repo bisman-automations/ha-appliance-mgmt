@@ -1,4 +1,4 @@
-"""The Appliances sidebar dashboard.
+"""The Appliance Mgmt sidebar dashboard.
 
 Registered once from ``async_setup`` for the whole Home Assistant run — not
 once per config entry, and not removed when the last appliance unloads.
@@ -10,16 +10,17 @@ second time.
 
 The panel reads live states (Status, Time Left, …) from the frontend's own
 connection. This module adds what states don't carry: which entities belong
-to which appliance, recent cycles, maintenance alerts and each appliance's
-picture. The websocket command lists every appliance that is set up, not the
-entry that happened to register the page.
+to which appliance, recent cycles, maintenance alerts, upkeep, energy and
+whether it's muted. The websocket command lists every appliance that is set
+up, not the entry that happened to register the page.
 
-Pictures are uploaded with Home Assistant's own image upload (the same one
-person pictures use); only the uploaded image's id is stored here.
+Each appliance is drawn by the panel itself (2.1.0). Pictures uploaded
+before 2.1.0 are deleted once, at startup.
 """
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 from pathlib import Path
 from typing import Any
@@ -30,16 +31,18 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, DOOR_TYPES
+from .dashboard import DATA_DASHBOARD, DashboardStore
 
 _LOGGER = logging.getLogger(__name__)
 
 PANEL_URL_PATH = "appliances"
 PANEL_COMPONENT = "appliance-mgmt-panel"
-PANEL_TITLE = "Appliances"
+PANEL_TITLE = "Appliance Mgmt"
 PANEL_ICON = "mdi:washing-machine"
 STATIC_URL = f"/{DOMAIN}_static"
 FRONTEND_DIR = Path(__file__).parent / "frontend"
@@ -52,9 +55,12 @@ DATA_PANEL = f"{DOMAIN}_panel"
 DATA_STATIC = f"{DOMAIN}_static"
 # True once the websocket commands are registered for this run.
 DATA_API = f"{DOMAIN}_panel_api"
-DATA_IMAGES = f"{DOMAIN}_images"
+# Pictures uploaded before 2.1.0 (config entry id -> image upload id)
 IMAGES_STORE = f"{DOMAIN}.images"
+# Cycles listed: the last week's, and at least this many
 RECENT_CYCLES = 10
+RECENT_CYCLES_MAX = 50
+WEEK_DAYS = 7
 
 # Our entities, by the key in their unique id (``<entry_id>_<key>``).
 ENTITY_KEYS = {
@@ -71,31 +77,8 @@ ENTITY_KEYS = {
 }
 
 
-class ImageStore:
-    """Each appliance's uploaded picture: config entry id -> image id."""
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store[dict[str, Any]] = Store(hass, 1, IMAGES_STORE)
-        self.images: dict[str, str] = {}
-
-    async def async_load(self) -> None:
-        stored = await self._store.async_load() or {}
-        self.images = {
-            k: v
-            for k, v in (stored.get("images") or {}).items()
-            if isinstance(k, str) and isinstance(v, str)
-        }
-
-    async def async_set(self, entry_id: str, image_id: str | None) -> None:
-        if image_id:
-            self.images[entry_id] = image_id
-        else:
-            self.images.pop(entry_id, None)
-        await self._store.async_save({"images": self.images})
-
-
 async def async_setup_panel_backend(hass: HomeAssistant) -> None:
-    """Load the pictures and register the websocket commands, once per run.
+    """Load the dashboard store and register the websocket commands, once per run.
 
     ``websocket_api.async_register_command`` raises if the same command is
     registered again, so a second call (a retried ``async_setup``) must not
@@ -106,15 +89,43 @@ async def async_setup_panel_backend(hass: HomeAssistant) -> None:
         return
     hass.data[DATA_API] = True
     try:
-        images = ImageStore(hass)
-        await images.async_load()
+        store = DashboardStore(hass)
+        await store.async_load()
     except Exception:
         # Leave the commands unregistered and let a retry start over.
         hass.data[DATA_API] = False
         raise
-    hass.data[DATA_IMAGES] = images
+    hass.data[DATA_DASHBOARD] = store
     websocket_api.async_register_command(hass, websocket_appliances)
-    websocket_api.async_register_command(hass, websocket_set_image)
+    websocket_api.async_register_command(hass, websocket_mute)
+    websocket_api.async_register_command(hass, websocket_upkeep_done)
+    async_at_started(hass, async_remove_old_pictures)
+
+
+async def async_remove_old_pictures(hass: HomeAssistant) -> None:
+    """Delete the pictures uploaded before 2.1.0, once.
+
+    They were kept by Home Assistant's image upload; only their ids were
+    stored here. Whatever can't be deleted (image upload not loaded) is left
+    alone, and the list is forgotten either way.
+    """
+    store: Store[dict[str, Any]] = Store(hass, 1, IMAGES_STORE)
+    try:
+        stored = await store.async_load()
+    except Exception:  # noqa: BLE001 - a bad file must not stop the dashboard
+        _LOGGER.debug("Couldn't read the old pictures list", exc_info=True)
+        return
+    if stored is None:
+        return
+    uploads = hass.data.get("image_upload")
+    for image_id in (stored.get("images") or {}).values():
+        if uploads is None or not isinstance(image_id, str):
+            continue
+        try:
+            await uploads.async_delete_item(image_id)
+        except Exception:  # noqa: BLE001 - already gone, or a newer image upload
+            _LOGGER.debug("Couldn't delete old picture %s", image_id, exc_info=True)
+    await store.async_remove()
 
 
 def _panel_already_registered(err: BaseException) -> bool:
@@ -182,11 +193,6 @@ async def _async_register_panel_and_static(
     )
 
 
-def image_url(image_id: str | None) -> str | None:
-    """Where Home Assistant serves an uploaded picture."""
-    return f"/api/image/serve/{image_id}/512x512" if image_id else None
-
-
 def _alerts(coordinator) -> list[str]:
     """Maintenance problems that states alone don't show."""
     from .maintenance import CLEAN_FILTER_STATES  # noqa: PLC0415
@@ -213,6 +219,65 @@ def _alerts(coordinator) -> list[str]:
     return alerts
 
 
+def _iso(timestamp: float | None) -> str | None:
+    return dt_util.utc_from_timestamp(timestamp).isoformat() if timestamp else None
+
+
+def _waiting(coordinator) -> dict[str, Any] | None:
+    """A finished load still inside, when the appliance knows it."""
+    if coordinator.appliance_type in DOOR_TYPES:
+        return None
+    move_since = getattr(coordinator, "_move_since", None)
+    if move_since:
+        to_dryer = coordinator.dryer_entity or coordinator.combine_laundry
+        return {
+            "text": "Move it to the dryer" if to_dryer else "Done, still full",
+            "since": _iso(move_since),
+        }
+    if coordinator.appliance_type == "dishwasher" and coordinator._clean_inside():
+        history = coordinator._history
+        return {
+            "text": "Clean dishes inside",
+            "since": _iso(history[-1][0]) if history else None,
+        }
+    return None
+
+
+def _cycles(coordinator) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(recent cycles newest first, cycles per day for the last week)."""
+    price = coordinator.energy_price
+    history = list(getattr(coordinator, "_history", []))
+    today = dt_util.as_local(dt_util.utcnow()).date()
+    first_day = today - timedelta(days=WEEK_DAYS - 1)
+    days: dict[str, dict[str, Any]] = {}
+    for offset in range(WEEK_DAYS):
+        day = (first_day + timedelta(days=offset)).isoformat()
+        days[day] = {"date": day, "count": 0, "kwh": None}
+    recent: list[dict[str, Any]] = []
+    for item in reversed(history):
+        finished, minutes = item[0], item[1]
+        kwh = item[2] if len(item) > 2 else None
+        local = dt_util.as_local(dt_util.utc_from_timestamp(finished)).date()
+        if (day := days.get(local.isoformat())) is not None:
+            day["count"] += 1
+            if kwh is not None:
+                day["kwh"] = round((day["kwh"] or 0) + kwh, 3)
+        if len(recent) < RECENT_CYCLES_MAX and (
+            local >= first_day or len(recent) < RECENT_CYCLES
+        ):
+            recent.append(
+                {
+                    "finished": _iso(finished),
+                    "minutes": minutes,
+                    "kwh": kwh,
+                    "cost": round(kwh * price, 2)
+                    if kwh is not None and price
+                    else None,
+                }
+            )
+    return recent, list(days.values())
+
+
 @callback
 def appliance_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
     """Everything the panel needs about one appliance."""
@@ -229,7 +294,6 @@ def appliance_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
             )
         )
     }
-    images: ImageStore | None = hass.data.get(DATA_IMAGES)
     own = own_device(hass, entry)
     fridge = getattr(coordinator, "fridge", None)
     try:
@@ -237,7 +301,16 @@ def appliance_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
     except Exception:  # a monitor must never break the dashboard
         _LOGGER.exception("Couldn't read %s's maintenance alerts", coordinator.name)
         alerts = []
-    history = list(getattr(coordinator, "_history", []))[-RECENT_CYCLES:]
+    store: DashboardStore | None = hass.data.get(DATA_DASHBOARD)
+    history = list(getattr(coordinator, "_history", []))
+    try:
+        waiting = _waiting(coordinator)
+    except Exception:
+        _LOGGER.exception("Couldn't tell whether %s is still full", coordinator.name)
+        waiting = None
+    recent, days = _cycles(coordinator)
+    # The fridge or dishwasher reports its own filter: no reminder for it
+    skip = ("water_filter", "filter") if getattr(coordinator, "filter", None) else ()
     return {
         "entry_id": entry.entry_id,
         "name": coordinator.display_title,
@@ -246,8 +319,6 @@ def appliance_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
         "door": coordinator.appliance_type in DOOR_TYPES,
         "icon": coordinator.icon,
         "color": coordinator.icon_color,
-        "image": image_url(images.images.get(entry.entry_id) if images else None),
-        "image_id": images.images.get(entry.entry_id) if images else None,
         "link": coordinator.tap_path(),
         "device_id": own.id if own else None,
         "appliance_device_id": appliance_device_id(hass, coordinator),
@@ -260,15 +331,25 @@ def appliance_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
             if fridge is not None
             else []
         ),
+        # The doors (fridge, freezer, a plain door), for opens today
+        "door_entities": list(getattr(coordinator, "doors", []) or []),
+        "door_entity": getattr(coordinator, "door_entity", None),
+        # The oven's own temperature and set temperature, for the drawing
+        "temperature_entity": getattr(coordinator, "temperature_entity", None),
+        "target_entity": getattr(coordinator, "target_entity", None),
         "alerts": alerts,
-        # Newest first: when each cycle finished and how long it ran.
-        "recent_cycles": [
-            {
-                "finished": dt_util.utc_from_timestamp(finished).isoformat(),
-                "minutes": minutes,
-            }
-            for finished, minutes in reversed(history)
-        ],
+        "waiting": waiting,
+        "muted_until": _iso(store.muted_until(entry.entry_id)) if store else None,
+        "upkeep": (
+            store.upkeep(entry.entry_id, coordinator.appliance_type, history, skip)
+            if store
+            else []
+        ),
+        "energy": bool(coordinator.energy_entity),
+        "currency": hass.config.currency if coordinator.energy_price else None,
+        # Newest first: when each cycle finished, how long it ran, energy
+        "recent_cycles": recent,
+        "days": days,
     }
 
 
@@ -309,27 +390,56 @@ def websocket_appliances(
     )
 
 
+def _entry(hass: HomeAssistant, entry_id: str):
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or entry.state is not ConfigEntryState.LOADED
+    ):
+        return None
+    return entry
+
+
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): f"{DOMAIN}/image",
+        vol.Required("type"): f"{DOMAIN}/mute",
         vol.Required("entry_id"): str,
-        vol.Optional("image_id"): vol.Any(str, None),
+        vol.Required("muted"): bool,
     }
 )
-@websocket_api.require_admin
 @websocket_api.async_response
-async def websocket_set_image(
+async def websocket_mute(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Set or clear an appliance's picture (an uploaded image's id)."""
-    entry = hass.config_entries.async_get_entry(msg["entry_id"])
-    if entry is None or entry.domain != DOMAIN:
+    """Mute an appliance until midnight, or unmute it."""
+    entry = _entry(hass, msg["entry_id"])
+    if entry is None:
         connection.send_error(msg["id"], "not_found", "No such appliance")
         return
-    images: ImageStore = hass.data[DATA_IMAGES]
-    previous = images.images.get(entry.entry_id)
-    await images.async_set(entry.entry_id, msg.get("image_id"))
-    connection.send_result(
-        msg["id"],
-        {"image": image_url(msg.get("image_id")), "previous_image_id": previous},
-    )
+    store: DashboardStore = hass.data[DATA_DASHBOARD]
+    until = store.set_muted(entry.entry_id, msg["muted"])
+    await entry.runtime_data.async_mute_changed(until)
+    connection.send_result(msg["id"], {"muted_until": _iso(until)})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/upkeep_done",
+        vol.Required("entry_id"): str,
+        vol.Required("key"): str,
+    }
+)
+@callback
+def websocket_upkeep_done(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """An upkeep task was done just now."""
+    entry = _entry(hass, msg["entry_id"])
+    store: DashboardStore = hass.data[DATA_DASHBOARD]
+    if entry is None or not store.upkeep_done(
+        entry.entry_id, entry.runtime_data.appliance_type, msg["key"]
+    ):
+        connection.send_error(msg["id"], "not_found", "No such appliance or task")
+        return
+    connection.send_result(msg["id"], {"done": True})
