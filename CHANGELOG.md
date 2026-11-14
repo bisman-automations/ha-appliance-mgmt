@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-11-14
+
+### Added
+
+- **Pick how each appliance is drawn.** **Change the drawing** in a card's **⋯** menu shows every drawing for that kind of appliance, drawn as it is right now. Washers: front load or top load. Dryers: front load or stacked on a washer. Dishwashers: built-in or drawers. Ovens: range, wall oven or double wall oven. Fridges and freezers: French door, side by side, top freezer, bottom freezer, fridge only, upright freezer, chest freezer or mini fridge. Doors: a door, a garage door or a sliding door. Each one moves like the others: a chest freezer's lid lifts, a garage door rolls up, a top-load washer's drum turns under its glass lid.
+
+### Changed
+
+- **Freezers look like freezers.** Until you pick a drawing, a fridge whose name says freezer (or that only has a freezer temperature) is drawn as an upright freezer, one whose name says chest as a chest freezer, and a door whose name says garage as a garage door.
+
 ## [2.1.0] - 2026-11-14
 
 ### Added
@@ -594,6 +604,7 @@ Initial release.
 - Status and Progress sensors per appliance for dashboards.
 - `appliance_live_activity.update` service for forcing a manual refresh.
 
+[2.2.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.0...v2.0.1

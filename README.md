@@ -349,7 +349,9 @@ The name you see is the device name plus the entity: **Kitchen Dishwasher Live A
 - fridges and freezers: their temperatures over the last 24 hours, with the too-warm limit as a dashed line, and how many times the doors were opened today and for how long (doors show the same). These come from Home Assistant's history, so they need the recorder (on by default);
 - **Cycles per day** for the last week. Tap a day to see its cycles: when each finished, how long it ran, and its energy and cost.
 
-The **⋯** menu on each card has **Update Live Activity**, **Mute for today**, **Recent cycles** and the device page.
+The **⋯** menu on each card has **Update Live Activity**, **Mute for today**, **Recent cycles**, **Change the drawing** and the device page.
+
+**Change the drawing** shows each drawing for that kind of appliance, drawn as it is right now; tap one to use it on every screen. Washers: front load or top load. Dryers: front load, or stacked on a washer. Dishwashers: built-in or drawers. Ovens: range, wall oven or double wall oven. Fridges and freezers: French door, side by side, top freezer, bottom freezer, fridge only, upright freezer, chest freezer or mini fridge. Doors: a door, a garage door or a sliding door. Until one is picked, a fridge whose name says freezer (or that only has a freezer temperature) is drawn as an upright freezer, one whose name says chest as a chest freezer, and a door whose name says garage as a garage door. **Pick it for me** goes back to that.
 
 **Mute for today** stops the appliance's regular alerts and its Live Activity until midnight. Critical alerts still come through: a water leak, a fridge or freezer too warm, a door left open, the cooktop left on and a blocked dryer vent. **Unmute** puts its Live Activity back straight away.
 

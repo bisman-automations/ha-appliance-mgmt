@@ -36,7 +36,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, DOOR_TYPES
-from .dashboard import DATA_DASHBOARD, DashboardStore
+from .dashboard import DATA_DASHBOARD, DRAWINGS, DashboardStore, default_drawing
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,6 +99,7 @@ async def async_setup_panel_backend(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_appliances)
     websocket_api.async_register_command(hass, websocket_mute)
     websocket_api.async_register_command(hass, websocket_upkeep_done)
+    websocket_api.async_register_command(hass, websocket_drawing)
     async_at_started(hass, async_remove_old_pictures)
 
 
@@ -311,6 +312,8 @@ def appliance_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
     recent, days = _cycles(coordinator)
     # The fridge or dishwasher reports its own filter: no reminder for it
     skip = ("water_filter", "filter") if getattr(coordinator, "filter", None) else ()
+    zones = tuple(fridge.zones) if fridge is not None else ()
+    picked = store.drawing(entry.entry_id) if store else None
     return {
         "entry_id": entry.entry_id,
         "name": coordinator.display_title,
@@ -319,6 +322,14 @@ def appliance_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
         "door": coordinator.appliance_type in DOOR_TYPES,
         "icon": coordinator.icon,
         "color": coordinator.icon_color,
+        # Which drawing (2.2.0): picked from the card's menu, else a default
+        # from the type and name.
+        "drawing": picked
+        or default_drawing(
+            coordinator.appliance_type, coordinator.display_title, zones
+        ),
+        "drawing_picked": picked is not None,
+        "drawings": list(DRAWINGS.get(coordinator.appliance_type, ("door",))),
         "link": coordinator.tap_path(),
         "device_id": own.id if own else None,
         "appliance_device_id": appliance_device_id(hass, coordinator),
@@ -443,3 +454,25 @@ def websocket_upkeep_done(
         connection.send_error(msg["id"], "not_found", "No such appliance or task")
         return
     connection.send_result(msg["id"], {"done": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/drawing",
+        vol.Required("entry_id"): str,
+        vol.Required("drawing"): vol.Any(None, str),
+    }
+)
+@callback
+def websocket_drawing(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Pick how an appliance is drawn (None: the default)."""
+    entry = _entry(hass, msg["entry_id"])
+    store: DashboardStore = hass.data[DATA_DASHBOARD]
+    if entry is None or not store.set_drawing(
+        entry.entry_id, entry.runtime_data.appliance_type, msg["drawing"]
+    ):
+        connection.send_error(msg["id"], "not_found", "No such appliance or drawing")
+        return
+    connection.send_result(msg["id"], {"drawing": msg["drawing"]})

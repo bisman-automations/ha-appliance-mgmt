@@ -8,6 +8,8 @@ store of its own):
   updates until local midnight. Critical alerts (a water leak, a door or
   cooktop left open, a blocked vent) still come through.
 * ``upkeep``: when each upkeep task was last done (see ``UPKEEP``).
+* ``drawing``: which drawing the dashboard shows (see ``DRAWINGS``), picked
+  from the card's menu. None: ``default_drawing``.
 """
 
 from __future__ import annotations
@@ -48,6 +50,53 @@ UPKEEP: dict[str, tuple[UpkeepTask, ...]] = {
         UpkeepTask("coils", "Clean the coils", days=365),
     ),
 }
+
+
+# The drawings the dashboard has for each type, the usual one first.
+DRAWINGS: dict[str, tuple[str, ...]] = {
+    "washer": ("front_load", "top_load"),
+    "dryer": ("front_load", "stacked"),
+    "dishwasher": ("built_in", "drawers"),
+    "oven": ("range", "wall_oven", "double_wall_oven"),
+    "refrigerator": (
+        "french_door",
+        "side_by_side",
+        "top_freezer",
+        "bottom_freezer",
+        "fridge_only",
+        "upright_freezer",
+        "chest_freezer",
+        "mini_fridge",
+    ),
+    "door": ("door", "garage_door", "sliding_door"),
+}
+
+
+def default_drawing(appliance_type: str, name: str, zones: tuple[str, ...]) -> str:
+    """The drawing to use when none was picked.
+
+    A fridge that is really a freezer (its name says so, or it only has a
+    freezer temperature) is drawn as an upright freezer, or a chest freezer
+    when its name says chest; a door called a garage door as one.
+    """
+    styles = DRAWINGS.get(appliance_type) or ("door",)
+    lowered = name.lower()
+    if appliance_type == "refrigerator":
+        if "chest" in lowered:
+            return "chest_freezer"
+        if (
+            "freezer" in lowered
+            and "fridge" not in lowered
+            and "refrigerator" not in lowered
+        ):
+            return "upright_freezer"
+        if zones and "fridge" not in zones:
+            return "upright_freezer"
+        if "mini" in lowered:
+            return "mini_fridge"
+    if appliance_type == "door" and "garage" in lowered:
+        return "garage_door"
+    return styles[0]
 
 
 def next_midnight(now: datetime | None = None) -> datetime:
@@ -96,6 +145,26 @@ class DashboardStore:
             item.pop("muted_until", None)
         self._save()
         return self.muted_until(entry_id)
+
+    # ----------------------------------------------------------- drawing
+    def drawing(self, entry_id: str) -> str | None:
+        style = self.data.get(entry_id, {}).get("drawing")
+        return style if isinstance(style, str) else None
+
+    @callback
+    def set_drawing(
+        self, entry_id: str, appliance_type: str, style: str | None
+    ) -> bool:
+        """Pick a drawing, or None for the default. False: not one for this type."""
+        if style is not None and style not in DRAWINGS.get(appliance_type, ()):
+            return False
+        item = self._get(entry_id)
+        if style is None:
+            item.pop("drawing", None)
+        else:
+            item["drawing"] = style
+        self._save()
+        return True
 
     # ------------------------------------------------------------ upkeep
     @callback

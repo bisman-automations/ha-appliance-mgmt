@@ -210,8 +210,206 @@ const DRAW = {
   },
 };
 
+// The fridge or freezer temperature to show on a one-zone drawing.
+const oneTemp = (v, freezer = true) => (freezer ? v.temps.freezer || v.temps.fridge : v.temps.fridge || v.temps.freezer);
+const reading = (x, y, t) => (t ? `<text class="reading small" x="${x}" y="${y}" text-anchor="middle">${esc(t.text)}</text>` : "");
+const warn = (t) => (t?.warm ? " warn" : "");
+
+Object.assign(DRAW, {
+  front_load: DRAW.washer,
+  built_in: DRAW.dishwasher,
+  range: DRAW.oven,
+  french_door: DRAW.refrigerator,
+  // A top-loading washer seen from a little above: a glass lid shows the drum.
+  top_load(v) {
+    const open = v.doorOpen;
+    return `
+      <rect class="panel" x="54" y="10" width="92" height="22" rx="5"/>
+      ${screen(62, 15, 38, v.display)}
+      <circle class="knob" cx="128" cy="21" r="6"/>
+      <path class="top" d="M50 32 h100 l-6 18 h-88z"/>
+      <rect class="body" x="56" y="50" width="88" height="92" rx="6"/>
+      <line class="seam" x1="56" y1="132" x2="144" y2="132"/>
+      ${open
+        ? `<ellipse class="inside" cx="100" cy="41" rx="34" ry="7"/><path class="rim" d="M66 40 q34 -46 68 0" fill="none"/>
+           <path class="glass lid-up" d="M70 39 q30 -38 60 0z"/>`
+        : `<ellipse class="rim" cx="100" cy="41" rx="38" ry="8"/><ellipse class="glass" cx="100" cy="41" rx="32" ry="6"/>
+           <g transform="translate(100 41) scale(1 .2) translate(-100 -41)"><g class="${v.running ? "spin top" : ""}">
+             <circle class="cloth a" cx="88" cy="36" r="9"/><circle class="cloth b" cx="112" cy="46" r="10"/><circle class="cloth c" cx="102" cy="26" r="7"/></g></g>`}`;
+  },
+  // A washer with a dryer on top: the dryer's drum turns while it runs.
+  stacked(v) {
+    const drum = (cy, cls) => `<circle class="rim" cx="100" cy="${cy}" r="22"/><circle class="glass" cx="100" cy="${cy}" r="17"/>
+      <g class="${cls}" style="transform-origin:100px ${cy}px"><circle class="cloth a" cx="94" cy="${cy + 5}" r="5"/><circle class="cloth b" cx="106" cy="${cy + 4}" r="5"/><circle class="cloth c" cx="100" cy="${cy - 7}" r="4"/></g>`;
+    return `
+      <rect class="body" x="64" y="4" width="72" height="70" rx="6"/>
+      ${screen(70, 8, 34, v.display)}
+      <g class="door${v.doorOpen ? " open" : ""}" style="transform-origin:78px 46px">${drum(46, v.running ? "spin slow" : "")}</g>
+      <rect class="body" x="64" y="76" width="72" height="68" rx="6"/>
+      <circle class="knob small" cx="124" cy="84" r="4"/>
+      <circle class="rim" cx="100" cy="114" r="22"/><circle class="glass" cx="100" cy="114" r="17"/>`;
+  },
+  // Two dishwasher drawers; the top one slides out when open.
+  drawers(v) {
+    const bubbles = v.running
+      ? `<g class="bubbles">${[76, 96, 116, 128].map((x, i) => `<circle cx="${x}" cy="30" r="${2 + (i % 2)}" style="animation-delay:${i * 0.5}s"/>`).join("")}</g>`
+      : "";
+    return `
+      <rect class="frame" x="50" y="36" width="100" height="106" rx="4"/>
+      <g class="slide${v.doorOpen ? " out" : ""}">
+        <rect class="body" x="54" y="40" width="92" height="48" rx="5"/>
+        <rect class="handle" x="78" y="46" width="44" height="5" rx="2.5"/>
+        ${screen(80, 66, 40, v.display)}
+      </g>
+      <rect class="body" x="54" y="90" width="92" height="48" rx="5"/>
+      <rect class="handle" x="78" y="96" width="44" height="5" rx="2.5"/>
+      ${bubbles}`;
+  },
+  wall_oven(v) {
+    return `
+      <rect class="frame" x="48" y="4" width="104" height="140" rx="4"/>
+      <rect class="panel" x="54" y="10" width="92" height="20" rx="4"/>
+      ${screen(84, 13, 32, v.display)}
+      <rect class="body" x="54" y="34" width="92" height="104" rx="5"/>
+      <rect class="handle" x="68" y="42" width="64" height="5" rx="2.5"/>
+      <g class="door${v.doorOpen ? " open" : ""}">
+        <rect class="glass" x="66" y="56" width="68" height="70" rx="6"/>
+        <rect class="glow${v.running ? " on" : ""}${v.preheating ? " pulse" : ""}" x="66" y="56" width="68" height="70" rx="6"/>
+        ${v.running ? `<line class="element" x1="72" y1="120" x2="128" y2="120"/>` : ""}
+        ${v.ovenTemp ? `<text class="reading" x="100" y="96" text-anchor="middle">${esc(v.ovenTemp)}</text>` : ""}
+      </g>`;
+  },
+  // Two ovens; the top one shows what the appliance reports.
+  double_wall_oven(v) {
+    const oven = (y, lit) => `
+      <rect class="body" x="54" y="${y}" width="92" height="56" rx="5"/>
+      <rect class="handle" x="68" y="${y + 5}" width="64" height="4" rx="2"/>
+      <rect class="glass" x="66" y="${y + 14}" width="68" height="36" rx="5"/>
+      ${lit ? `<rect class="glow on${v.preheating ? " pulse" : ""}" x="66" y="${y + 14}" width="68" height="36" rx="5"/>` : ""}`;
+    return `
+      <rect class="frame" x="48" y="2" width="104" height="146" rx="4"/>
+      <rect class="panel" x="54" y="6" width="92" height="20" rx="4"/>
+      ${screen(84, 9, 32, v.display)}
+      ${oven(28, v.running)}
+      ${v.ovenTemp ? `<text class="reading" x="100" y="68" text-anchor="middle">${esc(v.ovenTemp)}</text>` : ""}
+      ${oven(88, false)}`;
+  },
+  side_by_side(v) {
+    const open = v.doorOpen;
+    return `
+      <rect class="inside" x="56" y="6" width="88" height="138" rx="6"/>
+      ${open ? `<g class="lit"><rect x="104" y="12" width="36" height="126" rx="3"/><line x1="104" y1="48" x2="140" y2="48"/><line x1="104" y1="84" x2="140" y2="84"/><line x1="104" y1="116" x2="140" y2="116"/></g>` : ""}
+      <rect class="body${warn(v.temps.freezer)}" x="56" y="6" width="42" height="138" rx="6"/>
+      <rect class="dispenser" x="64" y="30" width="26" height="30" rx="3"/>
+      <rect class="handle" x="92" y="64" width="4" height="40" rx="2"/>
+      ${reading(77, 80, v.temps.freezer)}
+      <g class="swing right${open ? " open" : ""}">
+        <rect class="body${warn(v.temps.fridge)}" x="102" y="6" width="42" height="138" rx="6"/>
+        <rect class="handle" x="104" y="64" width="4" height="40" rx="2"/>
+        ${open ? "" : reading(124, 80, v.temps.fridge)}
+      </g>`;
+  },
+  top_freezer(v) {
+    const open = v.doorOpen;
+    return `
+      <rect class="inside" x="62" y="50" width="76" height="94" rx="6"/>
+      ${open ? `<g class="lit"><rect x="66" y="54" width="68" height="86" rx="3"/><line x1="66" y1="82" x2="134" y2="82"/><line x1="66" y1="110" x2="134" y2="110"/></g>` : ""}
+      <rect class="body${warn(v.temps.freezer)}" x="62" y="6" width="76" height="42" rx="6"/>
+      <rect class="handle" x="68" y="30" width="4" height="14" rx="2"/>
+      ${reading(104, 32, v.temps.freezer)}
+      <g class="swing${open ? " open" : ""}" style="transform-origin:62px 96px">
+        <rect class="body${warn(v.temps.fridge)}" x="62" y="50" width="76" height="94" rx="6"/>
+        <rect class="handle" x="68" y="56" width="4" height="26" rx="2"/>
+        ${reading(104, 100, v.temps.fridge)}
+      </g>`;
+  },
+  bottom_freezer(v) {
+    const open = v.doorOpen;
+    return `
+      <rect class="inside" x="62" y="6" width="76" height="90" rx="6"/>
+      ${open ? `<g class="lit"><rect x="66" y="10" width="68" height="82" rx="3"/><line x1="66" y1="38" x2="134" y2="38"/><line x1="66" y1="64" x2="134" y2="64"/></g>` : ""}
+      <g class="swing${open ? " open" : ""}" style="transform-origin:62px 50px">
+        <rect class="body${warn(v.temps.fridge)}" x="62" y="6" width="76" height="90" rx="6"/>
+        <rect class="handle" x="128" y="50" width="4" height="34" rx="2"/>
+        ${reading(100, 54, v.temps.fridge)}
+      </g>
+      <rect class="body${warn(v.temps.freezer)}" x="62" y="98" width="76" height="46" rx="6"/>
+      <rect class="handle" x="82" y="104" width="36" height="4" rx="2"/>
+      ${reading(100, 130, v.temps.freezer)}`;
+  },
+  fridge_only(v) {
+    return DRAW.upright_freezer(v, false);
+  },
+  // A tall single door; frost lines inside when it's a freezer.
+  upright_freezer(v, frosty = true) {
+    const open = v.doorOpen;
+    const t = oneTemp(v, frosty);
+    return `
+      <rect class="inside${frosty ? " frost" : ""}" x="64" y="6" width="72" height="138" rx="6"/>
+      ${open ? `<g class="${frosty ? "frosty" : "lit"}"><rect x="68" y="10" width="64" height="130" rx="3"/>${[38, 66, 94, 120].map((y) => `<line x1="68" y1="${y}" x2="132" y2="${y}"/>`).join("")}</g>` : ""}
+      <g class="swing${open ? " open" : ""}" style="transform-origin:64px 75px">
+        <rect class="body${warn(t)}" x="64" y="6" width="72" height="138" rx="6"/>
+        <rect class="handle" x="126" y="44" width="4" height="40" rx="2"/>
+        ${frosty ? `<path class="snow" d="M100 26 v12 M95 29 l10 6 M105 29 l-10 6"/>` : ""}
+        ${reading(100, 78, t)}
+      </g>`;
+  },
+  // A low, wide chest; the lid lifts when it's open.
+  chest_freezer(v) {
+    const open = v.doorOpen;
+    const t = oneTemp(v);
+    return `
+      ${open ? `<g class="frosty"><rect x="34" y="66" width="132" height="12" rx="2"/></g>` : ""}
+      <rect class="body${warn(t)}" x="30" y="70" width="140" height="70" rx="6"/>
+      <g class="lid${open ? " open" : ""}"><rect class="body" x="28" y="58" width="144" height="14" rx="4"/><rect class="handle" x="84" y="66" width="32" height="4" rx="2"/></g>
+      <rect class="vent" x="140" y="118" width="22" height="14" rx="2"/>
+      ${reading(100, 112, t)}`;
+  },
+  mini_fridge(v) {
+    const open = v.doorOpen;
+    const t = oneTemp(v, false);
+    return `
+      <rect class="inside" x="66" y="56" width="68" height="86" rx="6"/>
+      ${open ? `<g class="lit"><rect x="70" y="60" width="60" height="78" rx="3"/><line x1="70" y1="98" x2="130" y2="98"/></g>` : ""}
+      <g class="swing${open ? " open" : ""}" style="transform-origin:66px 100px">
+        <rect class="body${warn(t)}" x="66" y="56" width="68" height="86" rx="6"/>
+        <rect class="handle" x="124" y="74" width="4" height="24" rx="2"/>
+        ${reading(98, 104, t)}
+      </g>`;
+  },
+  garage_door(v) {
+    const open = v.doorOpen;
+    return `
+      <path class="frame" d="M30 54 L100 12 L170 54 V144 H30z"/>
+      <rect class="inside" x="46" y="66" width="108" height="78"/>
+      <g class="roll${open ? " open" : ""}">
+        ${[66, 86, 106, 126].map((y) => `<rect class="body" x="46" y="${y}" width="108" height="19" rx="1"/>`).join("")}
+        <rect class="glass" x="54" y="70" width="92" height="10" rx="1"/>
+      </g>`;
+  },
+  sliding_door(v) {
+    const open = v.doorOpen;
+    return `
+      <rect class="frame" x="34" y="14" width="132" height="130" rx="3"/>
+      <rect class="inside" x="40" y="20" width="120" height="118"/>
+      <rect class="pane" x="102" y="22" width="56" height="114" rx="2"/>
+      <g class="slide-left${open ? " open" : ""}"><rect class="pane" x="42" y="22" width="58" height="114" rx="2"/><rect class="handle" x="92" y="70" width="4" height="22" rx="2"/></g>`;
+  },
+});
+
+// Names for the drawing picker.
+const DRAWING_NAMES = {
+  washer: "Front load", front_load: "Front load", top_load: "Top load", stacked: "Washer and dryer stacked",
+  dryer: "Front load", built_in: "Built-in", drawers: "Drawers", range: "Range", wall_oven: "Wall oven",
+  double_wall_oven: "Double wall oven", french_door: "French door", side_by_side: "Side by side",
+  top_freezer: "Top freezer", bottom_freezer: "Bottom freezer", fridge_only: "Fridge only",
+  upright_freezer: "Upright freezer", chest_freezer: "Chest freezer", mini_fridge: "Mini fridge",
+  door: "Door", garage_door: "Garage door", sliding_door: "Sliding door",
+};
+
 const ART_STYLES = `
   .art { width: 100%; height: 150px; overflow: visible; }
+  .art.mini { width: 72px; height: 54px; }
   .art * { transform-box: view-box; }
   .art .body, .art .frame { fill: color-mix(in srgb, var(--c) 10%, var(--ala-card)); stroke: color-mix(in srgb, var(--c) 45%, var(--primary-text-color, #212121)); stroke-width: 2; }
   .art .body.warn { stroke: var(--error-color, #db4437); stroke-width: 2.5; }
@@ -253,6 +451,22 @@ const ART_STYLES = `
   .art .heat path:nth-child(2) { animation-delay: .6s; }
   .art .heat path:nth-child(3) { animation-delay: 1.2s; }
   .art .bubbles circle { fill: color-mix(in srgb, #4fc3f7 60%, transparent); animation: bubble 2.4s ease-in infinite; opacity: 0; }
+  .art .spin.top { transform-origin: 100px 41px; }
+  .art .lid-up { opacity: .7; }
+  .art .dispenser { fill: color-mix(in srgb, var(--c) 25%, #26323a); }
+  .art .frost, .art .frosty rect { fill: #e8f4fb; }
+  .art .frosty line { stroke: #b9d7e8; stroke-width: 2; }
+  .art .snow { stroke: color-mix(in srgb, var(--c) 45%, var(--primary-text-color, #212121)); stroke-width: 1.5; stroke-linecap: round; fill: none; }
+  .art .vent { fill: none; stroke: color-mix(in srgb, var(--c) 30%, var(--ala-card)); stroke-width: 1.5; }
+  .art .pane { fill: color-mix(in srgb, #9ad0f5 35%, var(--ala-card)); stroke: color-mix(in srgb, var(--c) 45%, var(--primary-text-color, #212121)); stroke-width: 2; }
+  .art .swing.right { transform-origin: 144px 75px; }
+  .art .slide, .art .roll, .art .slide-left, .art .lid { transition: transform .5s ease; }
+  .art .slide.out { transform: translateY(-26px); }
+  .art .roll { transform-origin: 100px 66px; }
+  .art .roll.open { transform: scaleY(.12); }
+  .art .slide-left.open { transform: translateX(58px); }
+  .art .lid { transform-origin: 28px 65px; }
+  .art .lid.open { transform: rotate(-38deg); }
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes glow { 0%, 100% { opacity: .25; } 50% { opacity: .7; } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
@@ -329,6 +543,10 @@ const STYLES = `
     box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 6px; display: flex; flex-direction: column;
   }
   .menu-pop button { border: none; border-radius: 6px; text-align: left; min-height: 40px; }
+  .menu-pop .pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; padding: 4px; max-width: 300px; }
+  .menu-pop .pick button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; min-height: 0; font-size: 12px; text-align: center; border: 1px solid var(--ala-divider); }
+  .menu-pop .pick button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); }
+  .menu-pop .pick svg { width: 72px; height: 54px; }
   .menu-pop button:hover { background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
   .now { font-size: 15px; }
   .waiting {
@@ -682,7 +900,9 @@ class ApplianceMgmtPanel extends HTMLElement {
   }
 
   _drawing(a, v) {
-    const draw = DRAW[a.type] || DRAW.door;
+    const style = a.drawing || a.type;
+    // The dryer's "front_load" is its own drawing, not the washer's.
+    const draw = (a.type === "dryer" && style === "front_load" ? DRAW.dryer : DRAW[style]) || DRAW[a.type] || DRAW.door;
     return `<svg class="art" viewBox="0 0 200 150" role="img" aria-label="${esc(`${a.type_name}: ${v.doorOpen ? "door open" : v.status}`)}">${draw(v)}</svg>`;
   }
 
@@ -911,6 +1131,18 @@ class ApplianceMgmtPanel extends HTMLElement {
   _menuPop(a) {
     if (this._menu !== a.entry_id) return "";
     const id = esc(a.entry_id);
+    if (this._picker === a.entry_id) {
+      // Pick how it's drawn: each choice drawn small, as it is now.
+      const view = this._view(a);
+      const options = a.drawings.map((style) => {
+        const preview = this._drawing({ ...a, drawing: style }, view).replace('class="art"', 'class="art mini"');
+        return `<button class="${style === a.drawing ? "on" : ""}" data-drawing="${esc(style)}" data-id="${id}" aria-pressed="${style === a.drawing}">${preview}<span>${esc(DRAWING_NAMES[style] || style)}</span></button>`;
+      });
+      return `<div class="menu-pop" role="menu" aria-label="${esc(`How ${a.name} is drawn`)}">
+        <div class="pick">${options.join("")}</div>
+        ${a.drawing_picked ? `<button data-drawing="" data-id="${id}">Pick it for me</button>` : ""}
+        <button data-picker-close>Back</button></div>`;
+    }
     const items = [];
     if (a.entities.update_live_activity) items.push(`<button data-update="${esc(a.entities.update_live_activity)}" data-id="${id}">Update Live Activity</button>`);
     items.push(a.muted_until
@@ -919,6 +1151,7 @@ class ApplianceMgmtPanel extends HTMLElement {
     if (!a.door && a.recent_cycles.length) {
       items.push(`<button data-cycles="${id}">${this._open.has(a.entry_id) ? "Hide recent cycles" : "Recent cycles"}</button>`);
     }
+    if (a.drawings.length > 1) items.push(`<button data-picker="${id}">Change the drawing</button>`);
     items.push(`<button data-link="${esc(a.link)}">Device page</button>`);
     return `<div class="menu-pop" role="menu" aria-label="${esc(a.name)}">${items.join("")}</div>`;
   }
@@ -990,7 +1223,20 @@ class ApplianceMgmtPanel extends HTMLElement {
       this.shadowRoot.getElementById("search").value = "";
       this._saveDash();
       this._render(true);
+    } else if (ds.picker) {
+      this._menu = ds.picker;
+      this._picker = ds.picker;
+      this._render(true);
+    } else if ("pickerClose" in ds) {
+      this._menu = hadMenu;
+      this._picker = null;
+      this._render(true);
+    } else if (ds.drawing !== undefined) {
+      this._menu = null;
+      this._picker = null;
+      this._setDrawing(ds.id, ds.drawing || null);
     } else if (ds.menu) {
+      this._picker = null;
       this._menu = hadMenu === ds.menu ? null : ds.menu;
       this._render(true);
     } else if (ds.cycles) {
@@ -1044,6 +1290,16 @@ class ApplianceMgmtPanel extends HTMLElement {
       this._note(id, muted ? "Muted until midnight. Critical alerts still come through." : "Alerts are back on.");
     } catch (err) {
       this._note(id, `Couldn't change it: ${err?.message || err}`, true);
+    }
+  }
+
+  async _setDrawing(id, drawing) {
+    const appliance = this._appliances.find((x) => x.entry_id === id);
+    try {
+      await this._hass.callWS({ type: `${DOMAIN}/drawing`, entry_id: id, drawing });
+      await this._load();
+    } catch (err) {
+      if (appliance) this._note(id, `Couldn't change it: ${err?.message || err}`, true);
     }
   }
 
