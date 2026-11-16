@@ -68,7 +68,7 @@ class _Monitor:
             )
         )
         self._unsubs.append(
-            async_track_time_interval(self.hass, self._handle_change, TICK)
+            async_track_time_interval(self.hass, self._handle_tick, TICK)
         )
         await self.async_evaluate()
 
@@ -78,8 +78,19 @@ class _Monitor:
         self._unsubs.clear()
 
     @callback
+    def _handle_tick(self, _now=None) -> None:
+        """The timed check, skipped while there's nothing to watch (no
+        background task every few seconds for an idle appliance)."""
+        if self.watching():
+            self._handle_change()
+
+    @callback
     def _handle_change(self, _event=None) -> None:
         self.coordinator.async_run(self.async_evaluate(), "evaluate oven extra")
+
+    def watching(self) -> bool:
+        """Whether the timed check has work (always, for these)."""
+        return True
 
     async def async_evaluate(self) -> None:  # pragma: no cover - overridden
         raise NotImplementedError

@@ -610,6 +610,24 @@ const STYLES = `
   ${ART_STYLES}
 `;
 
+
+// Whether the page can't be seen (another tab, or a screen that's off).
+function pageHidden() {
+  return typeof document !== "undefined" && Boolean(document.hidden);
+}
+
+// Every entity id an appliance list mentions, for watching their states.
+function entityIds(value, found = new Set()) {
+  if (typeof value === "string") {
+    if (/^[a-z_]+\.[a-z0-9_]+$/.test(value)) found.add(value);
+  } else if (Array.isArray(value)) {
+    value.forEach((v) => entityIds(v, found));
+  } else if (value && typeof value === "object") {
+    Object.values(value).forEach((v) => entityIds(v, found));
+  }
+  return [...found];
+}
+
 class ApplianceMgmtPanel extends HTMLElement {
   constructor() {
     super();
@@ -641,8 +659,47 @@ class ApplianceMgmtPanel extends HTMLElement {
     this._hass = hass;
     this._build();
     if (first) this._load();
+    const button = this.shadowRoot.querySelector(".menu ha-menu-button");
+    if (button) button.hass = hass;
+    // Home Assistant sends a new hass on every state change in the house;
+    // the cards are drawn again only when one of their own entities changed.
+    if (!first && !this._ownChanged()) return;
     this._watchStatuses();
     this._render();
+  }
+
+  // Whether a state the cards show changed since the last look (or nobody
+  // can see the page: it's drawn once when seen again).
+  _ownChanged() {
+    if (pageHidden()) {
+      this._staleView = true;
+      this._whenVisible();
+      return false;
+    }
+    if (!this._appliances) return true;
+    if (!this._ownIds) this._ownIds = entityIds(this._appliances);
+    const states = this._hass.states;
+    const now = this._ownIds.map((id) => states[id]);
+    const before = this._ownStates;
+    this._ownStates = now;
+    const changed = this._staleView || !before || before.length !== now.length || now.some((s, i) => s !== before[i]);
+    this._staleView = false;
+    return changed;
+  }
+
+  // Catch up once when a hidden page is seen again.
+  _whenVisible() {
+    if (this._onVisible) return;
+    this._onVisible = () => {
+      if (pageHidden()) return;
+      if (this._staleLoad) this._load();
+      if (this._staleView) {
+        this._staleView = false;
+        this._watchStatuses();
+        this._render();
+      }
+    };
+    document.addEventListener("visibilitychange", this._onVisible);
   }
 
   set narrow(narrow) {
@@ -662,17 +719,32 @@ class ApplianceMgmtPanel extends HTMLElement {
   disconnectedCallback() {
     clearInterval(this._timer);
     clearInterval(this._trendTimer);
+    if (this._onVisible) {
+      document.removeEventListener("visibilitychange", this._onVisible);
+      this._onVisible = null;
+    }
   }
 
   async _load() {
     if (!this._hass) return;
+    if (pageHidden()) {
+      // Nobody's looking: load (and read history) once when seen again.
+      this._staleLoad = true;
+      this._whenVisible();
+      return;
+    }
+    this._staleLoad = false;
     try {
       const res = await this._hass.callWS({ type: `${DOMAIN}/appliances` });
       const firstLoad = this._appliances === null;
       this._appliances = res.appliances;
+      this._ownIds = null; // the entities to watch come from the list
       this._isAdmin = !!res.is_admin;
       this._error = "";
-      if (firstLoad) this._loadTrends();
+      if (firstLoad || this._trendsStale) {
+        this._trendsStale = false;
+        this._loadTrends();
+      }
     } catch (err) {
       this._error = `Couldn't load the appliances: ${err?.message || err}`;
     }
@@ -682,6 +754,10 @@ class ApplianceMgmtPanel extends HTMLElement {
   // Fridge temperatures over the last day and door opens today, from history.
   async _loadTrends() {
     if (!this._hass || !this._appliances) return;
+    if (pageHidden()) {
+      this._trendsStale = true; // read once the page is seen and loaded again
+      return;
+    }
     const wanted = this._appliances.filter((a) => a.temperatures.length || a.door_entities.length);
     if (!wanted.length) return;
     const now = new Date();

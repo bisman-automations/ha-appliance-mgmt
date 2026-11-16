@@ -150,3 +150,27 @@ async def test_cooktop_acknowledge_stops_repeats(hass: HomeAssistant, oven, free
     await hass.async_block_till_done()
     await _advance(hass, freezer, timedelta(minutes=31))
     assert len(_crit(calls)) == 2
+
+
+async def test_idle_cooktop_skips_the_timed_check(hass: HomeAssistant, oven, freezer):
+    """2.2.1: with the cooktop off and nothing to resolve, the timed check
+    doesn't start any work; once it's on, it does."""
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    cooktop = entry.runtime_data.cooktop
+    runs: list[int] = []
+    real = cooktop.async_evaluate
+
+    async def counted():
+        runs.append(1)
+        await real()
+
+    cooktop.async_evaluate = counted
+    assert not cooktop.watching()
+    await _advance(hass, freezer, timedelta(minutes=5))
+    assert runs == []
+    hass.states.async_set("binary_sensor.kitchen_oven_cooktop_status", "on")
+    await hass.async_block_till_done()
+    runs.clear()
+    assert cooktop.watching()
+    await _advance(hass, freezer, timedelta(seconds=31))
+    assert runs == [1]

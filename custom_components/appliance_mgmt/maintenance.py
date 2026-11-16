@@ -93,7 +93,7 @@ class _Base:
             )
         )
         self._unsubs.append(
-            async_track_time_interval(self.hass, self._handle_change, TICK)
+            async_track_time_interval(self.hass, self._handle_tick, TICK)
         )
         await self.async_evaluate()
 
@@ -103,11 +103,22 @@ class _Base:
         self._unsubs.clear()
 
     @callback
+    def _handle_tick(self, _now=None) -> None:
+        """The timed check, skipped while there's nothing to watch (no
+        background task every few seconds for an idle appliance)."""
+        if self.watching():
+            self._handle_change()
+
+    @callback
     def _handle_change(self, _event=None) -> None:
         self.coordinator.async_run(self.async_evaluate(), "evaluate maintenance")
 
     async def async_evaluate(self) -> None:
         raise NotImplementedError
+
+    def watching(self) -> bool:
+        """Whether the timed check has work (always, unless a monitor says)."""
+        return True
 
 
 class VentMonitor(_Base):
@@ -131,6 +142,10 @@ class VentMonitor(_Base):
     def blocked(self) -> bool:
         state = self.hass.states.get(self.entities[0])
         return state is not None and state.state == STATE_ON
+
+    def watching(self) -> bool:
+        """Blocked, or an alert still to resolve."""
+        return self.blocked or self._last_alert is not None
 
     async def async_evaluate(self) -> None:
         now = dt_util.utcnow().timestamp()

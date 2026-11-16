@@ -66,6 +66,10 @@ class LeakMonitor:
         self._silenced = False
         self._unsubs: list[CALLBACK_TYPE] = []
 
+    def watching(self) -> bool:
+        """Wet, or an alert still to clear: the timed check has work."""
+        return bool(self.wet) or self._last_alert is not None
+
     @property
     def wet(self) -> list[str]:
         """Entity ids currently reporting water."""
@@ -98,7 +102,7 @@ class LeakMonitor:
             )
         )
         self._unsubs.append(
-            async_track_time_interval(self.hass, self._handle_change, TICK)
+            async_track_time_interval(self.hass, self._handle_tick, TICK)
         )
         self._unsubs.append(
             self.hass.bus.async_listen(EVENT_NOTIFICATION_ACTION, self._handle_action)
@@ -109,6 +113,13 @@ class LeakMonitor:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+
+    @callback
+    def _handle_tick(self, _now=None) -> None:
+        """The timed check, skipped while there's nothing to watch (no
+        background task every few seconds for an idle appliance)."""
+        if self.watching():
+            self._handle_change()
 
     @callback
     def _handle_change(self, _event=None) -> None:

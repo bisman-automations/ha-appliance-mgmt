@@ -78,6 +78,10 @@ class CooktopMonitor:
             for e in self.entities
         )
 
+    def watching(self) -> bool:
+        """On, or an alert still to resolve: the timed check has work."""
+        return self.is_on or self._on_since is not None or self._last_alert is not None
+
     @property
     def minutes_on(self) -> float:
         if self._on_since is None:
@@ -91,7 +95,7 @@ class CooktopMonitor:
             )
         )
         self._unsubs.append(
-            async_track_time_interval(self.hass, self._handle_change, TICK)
+            async_track_time_interval(self.hass, self._handle_tick, TICK)
         )
         self._unsubs.append(
             self.hass.bus.async_listen(EVENT_NOTIFICATION_ACTION, self._handle_action)
@@ -102,6 +106,13 @@ class CooktopMonitor:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+
+    @callback
+    def _handle_tick(self, _now=None) -> None:
+        """The timed check, skipped while there's nothing to watch (no
+        background task every few seconds for an idle appliance)."""
+        if self.watching():
+            self._handle_change()
 
     @callback
     def _handle_change(self, _event=None) -> None:

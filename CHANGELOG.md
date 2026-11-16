@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-11-15
+
+### Changed
+
+- **A lighter dashboard.** The Appliance Mgmt dashboard used to redraw every appliance card, drawing and all, whenever anything in Home Assistant changed. It now redraws only when one of that appliance's own sensors changes.
+- **Quiet when nobody's looking.** In a hidden browser tab or on a switched-off screen, the dashboard stops refreshing and stops reading fridge history, and catches up once when it's seen again.
+- **Idle monitors rest.** The cooktop, leak and blocked-vent checks used to start work every 30 to 60 seconds. They now only run their timed check while there's something to watch: the cooktop is on, a sensor is wet, the vent is blocked, or an alert still has to be cleared.
+
 ## [2.2.0] - 2026-11-14
 
 ### Added
@@ -604,6 +612,7 @@ Initial release.
 - Status and Progress sensors per appliance for dashboards.
 - `appliance_live_activity.update` service for forcing a manual refresh.
 
+[2.2.1]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.1...v2.0.2

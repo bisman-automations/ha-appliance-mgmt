@@ -96,6 +96,7 @@ first, plus any other brand or a plain door/contact sensor set up manually.
   Background work uses `entry.async_create_background_task` (`async_run` on
   the coordinator), not `hass.async_create_task`. The test harness fails a
   test that leaves a timer behind.
+- **Timed checks rest when idle** (2.2.1): monitors' `TICK` timers call `_handle_tick`, which runs `_handle_change` only when `watching()` is true (cooktop on or an alert to resolve, a leak sensor wet or an alert to clear, the vent blocked or an alert to resolve; always for the others). The panel draws again only when one of the appliance's own entities (`entityIds` of the appliance list) has a new state object (`_ownChanged`), and skips loading, history and drawing while `pageHidden()`, catching up on `visibilitychange`.
 - **Coordinators** live on `entry.runtime_data`. Don't put them in
   `hass.data[DOMAIN]`. Services and the Appliances sidebar panel (its static
   path and websocket commands) are registered once in `async_setup` and are
