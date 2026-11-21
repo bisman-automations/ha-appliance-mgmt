@@ -241,6 +241,10 @@ class SupplyMonitor(_Base):
                 )
         return result
 
+    def watching(self) -> bool:
+        """Nothing timed: refills follow the supply sensors' changes."""
+        return False
+
     async def async_evaluate(self) -> None:
         # Forget reminders for supplies that have been refilled
         low = {entity_id for entity_id, _ in self.low_supplies()}
@@ -280,6 +284,10 @@ class FilterMonitor(_Base):
     def status(self) -> str:
         state = self.hass.states.get(self.entities[0])
         return state.state.strip().lower() if state else ""
+
+    def watching(self) -> bool:
+        """Nothing timed: the alert follows the filter sensor's changes."""
+        return False
 
     async def async_evaluate(self) -> None:
         status = self.status
@@ -378,6 +386,11 @@ class FridgeMonitor(_Base):
     @property
     def too_warm(self) -> list[str]:
         return sorted(self._warm_alert)
+
+    def watching(self) -> bool:
+        """A zone above its limit (counting to the alert, or repeating it).
+        Cold zones and the ice bucket follow their sensors' changes."""
+        return bool(self._warm_since or self._warm_alert)
 
     async def async_evaluate(self) -> None:
         now = dt_util.utcnow().timestamp()

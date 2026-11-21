@@ -280,6 +280,8 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._event_listeners: list[Any] = []
         # [finished_at, minutes] or [finished_at, minutes, kWh]
         self._history: list[list[float]] = []
+        # The day / week / month counts the cycles sensor last showed
+        self._shown_counts: tuple[int, int, int] = (0, 0, 0)
         # Energy per cycle (2.1.0)
         self.energy_entity: str | None = (
             cfg.get(CONF_ENERGY_ENTITY) or None
@@ -971,8 +973,33 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         self.async_run(self.async_evaluate(send=True), "evaluate appliance")
 
+    def watching(self) -> bool:
+        """Whether the minute tick has work: a cycle running (drift, the
+        finish time, energy), a delayed start counting down, or laundry
+        reminders still to send, or the cooktop on (the status sensor shows
+        for how long). Everything else follows state changes."""
+        return (
+            self._in_cycle
+            or (self.cooktop is not None and self.cooktop.watching())
+            or self._delay_target is not None
+            or self._delay_sent is not None
+            or (self._move_since is not None and self._move_count < self.move_max)
+            or (self.energy is not None and self.energy.running)
+        )
+
+    def _window_counts(self) -> tuple[int, int, int]:
+        """Cycles in the last day, week and 30 days (the cycles sensor)."""
+        return self.cycles_since(1), self.cycles_since(7), self.cycles_since(30)
+
     @callback
     def _handle_tick(self, _now=None) -> None:
+        if not self.watching():
+            # Idle: no evaluation and no entity writes, except when a finished
+            # cycle drops out of the cycles sensor's day / week / month.
+            if self._history and self._window_counts() != self._shown_counts:
+                self._shown_counts = self._window_counts()
+                self.async_update_listeners()
+            return
         if self.energy is not None:
             self.energy.sample()
         self.async_run(self.async_evaluate(send=True), "evaluate appliance")
@@ -1248,6 +1275,7 @@ class ApplianceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         )
         active = status in ACTIVE
+        self._shown_counts = self._window_counts()
         self.async_set_updated_data(
             {
                 "status": status,

@@ -303,3 +303,77 @@ async def test_reopened_while_closed_is_showing(hass: HomeAssistant, fridge, fre
     await hass.async_block_till_done()
     assert calls[-1].data["message"] == "clear_notification"
     assert calls[-1].data["data"]["tag"] == "kitchen_refrigerator"
+
+
+# 2.2.2: idle appliances, shut doors and settled monitors do no timed work.
+
+
+async def _advance_ticks(hass, freezer, delta, step=timedelta(seconds=15)):
+    left = delta
+    while left > timedelta(0):
+        jump = min(step, left)
+        freezer.tick(jump)
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+        left -= jump
+
+
+def _count_evaluations(coordinator) -> list[int]:
+    runs: list[int] = []
+    real = coordinator.async_evaluate
+
+    async def counted(*args, **kwargs):
+        runs.append(1)
+        await real(*args, **kwargs)
+
+    coordinator.async_evaluate = counted
+    return runs
+
+
+async def test_shut_fridge_skips_the_door_check(hass: HomeAssistant, fridge, freezer):
+    """With every door shut the 15-second check does nothing; with one open
+    it runs (open delay, critical alerts)."""
+    calls = fridge
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    coordinator = entry.runtime_data
+    runs = _count_evaluations(coordinator)
+
+    assert not coordinator.watching()
+    await _advance_ticks(hass, freezer, timedelta(minutes=5))
+    assert runs == []
+
+    _door(hass, "freezer_door", "on")
+    await hass.async_block_till_done()
+    runs.clear()
+    await _advance_ticks(hass, freezer, timedelta(seconds=31))
+    assert len(runs) == 2
+    assert any(c.data.get("data", {}).get("live_update") for c in calls)
+
+    _door(hass, "freezer_door", "off")
+    await hass.async_block_till_done()
+    runs.clear()
+    await _advance_ticks(hass, freezer, timedelta(minutes=2))
+    assert runs == []
+
+
+async def test_settled_monitors_skip_the_timed_check(
+    hass: HomeAssistant, fridge, freezer
+):
+    """The water filter, supplies and the fridge temperatures within their
+    limits follow their sensors; only a too-warm zone needs the timed check."""
+    from custom_components.appliance_mgmt.maintenance import (  # noqa: PLC0415
+        FilterMonitor,
+        FridgeMonitor,
+        SupplyMonitor,
+    )
+
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    monitors = entry.runtime_data.monitors
+    assert any(isinstance(m, FilterMonitor) for m in monitors)
+    for monitor in monitors:
+        if isinstance(monitor, FilterMonitor | SupplyMonitor):
+            assert not monitor.watching()
+        if isinstance(monitor, FridgeMonitor):
+            assert not monitor.watching()
+            monitor._warm_since["fridge"] = 0.0
+            assert monitor.watching()

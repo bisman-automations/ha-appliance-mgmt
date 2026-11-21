@@ -139,6 +139,17 @@ class DoorCoordinator(ApplianceCoordinator):
         await super().async_unload()
         self._cancel_closed_clear()
 
+    def watching(self) -> bool:
+        """A door open (open delay, critical alerts, snooze): the timed check
+        has work. With every door shut, only a door opening changes anything."""
+        return self._open_since is not None or any(self._is_open(d) for d in self.doors)
+
+    @callback
+    def _handle_tick(self, _now=None) -> None:
+        """Every 15 seconds while a door is open; nothing while all are shut."""
+        if self.watching():
+            self.async_run(self.async_evaluate(send=True), "evaluate door")
+
     @callback
     def _handle_door_event(self, _event: Event) -> None:
         self.async_run(self.async_evaluate(send=True), "evaluate door")

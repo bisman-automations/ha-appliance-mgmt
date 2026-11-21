@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-11-20
+
+### Changed
+
+- **Idle appliances rest.** Every appliance used to check itself once a minute, and every fridge and door every 15 seconds, even with nothing going on, updating its sensors each time. Now a washer, dryer, dishwasher or oven only checks on the clock while a cycle runs, a delayed start counts down, a laundry reminder is still to come or the cooktop is on, and a fridge or door only while a door is open. Everything else still reacts the moment the appliance reports a change. **Cycles this week** still counts down on its own when a cycle drops out of the day or the week.
+- **Quieter fridge, filter and probe checks.** The water filter, refill and meat probe checks no longer run on a timer at all (they follow their sensors), the fridge and freezer temperature check runs on the clock only while a zone is too warm, and the oven's kitchen timer updates the status sensor only when its minutes change.
+- **Lighter fridge trends.** The dashboard read the whole last day of fridge temperatures and door history again every five minutes. It now reads the day once and afterwards only what changed since its last look.
+
 ## [2.2.1] - 2026-11-15
 
 ### Changed
@@ -612,6 +620,7 @@ Initial release.
 - Status and Progress sensors per appliance for dashboards.
 - `appliance_live_activity.update` service for forcing a manual refresh.
 
+[2.2.2]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/bisman-automations/ha-appliance-mgmt/compare/v2.0.2...v2.1.0

@@ -253,3 +253,92 @@ async def test_manual_flow(hass: HomeAssistant, enable_custom_integrations):
         result["flow_id"], {"devices": []}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+# 2.2.2: idle appliances, shut doors and settled monitors do no timed work.
+
+
+async def _advance_ticks(hass, freezer, delta, step=timedelta(seconds=15)):
+    left = delta
+    while left > timedelta(0):
+        jump = min(step, left)
+        freezer.tick(jump)
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+        left -= jump
+
+
+def _count_evaluations(coordinator) -> list[int]:
+    runs: list[int] = []
+    real = coordinator.async_evaluate
+
+    async def counted(*args, **kwargs):
+        runs.append(1)
+        await real(*args, **kwargs)
+
+    coordinator.async_evaluate = counted
+    return runs
+
+
+async def test_idle_washer_skips_the_minute_check(
+    hass: HomeAssistant, setup_devices, freezer
+):
+    """Idle: no evaluation and no sensor writes every minute. Running: the
+    minute check runs again (drift, finish time)."""
+    washer, phone, _calls = setup_devices
+    entry = await _create_entry(hass, washer, phone)
+    coordinator = entry.runtime_data
+    runs = _count_evaluations(coordinator)
+    writes: list[int] = []
+    coordinator.async_add_listener(lambda: writes.append(1))
+
+    assert not coordinator.watching()
+    await _advance_ticks(hass, freezer, timedelta(minutes=10), timedelta(minutes=1))
+    assert runs == []
+    assert writes == []
+
+    _set(hass, "time_remaining", "60")
+    _set(hass, "state", "Run")
+    await hass.async_block_till_done()
+    assert coordinator.watching()
+    runs.clear()
+    await _advance_ticks(hass, freezer, timedelta(minutes=3), timedelta(minutes=1))
+    assert len(runs) == 3
+
+
+async def test_cycles_sensor_still_counts_down_while_idle(
+    hass: HomeAssistant, setup_devices, freezer
+):
+    """A finished cycle still drops out of "today" and "this week" while the
+    washer sits idle, without any state change."""
+    washer, phone, _calls = setup_devices
+    entry = await _create_entry(hass, washer, phone)
+    _set(hass, "time_remaining", "30")
+    _set(hass, "state", "Run")
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(minutes=29))
+    _set(hass, "time_remaining", "0")
+    _set(hass, "end_of_cycle", "on", domain="binary_sensor")
+    await hass.async_block_till_done()
+    _set(hass, "door", "on", domain="binary_sensor")
+    await hass.async_block_till_done()
+    sensor = "sensor.laundry_room_washer_cycles_this_week"
+    state = hass.states.get(sensor)
+    if state is None:  # the entity id follows the translated name
+        sensor = next(
+            s.entity_id
+            for s in hass.states.async_all("sensor")
+            if s.entity_id.startswith("sensor.laundry_room_washer_cycles")
+        )
+        state = hass.states.get(sensor)
+    assert state.state == "1"
+    assert state.attributes["today"] == 1
+    assert not entry.runtime_data.watching()
+
+    await _advance_ticks(
+        hass, freezer, timedelta(days=1, minutes=1), timedelta(minutes=1)
+    )
+    assert hass.states.get(sensor).attributes["today"] == 0
+    assert hass.states.get(sensor).state == "1"
+    await _advance_ticks(hass, freezer, timedelta(days=6), timedelta(minutes=30))
+    assert hass.states.get(sensor).state == "0"

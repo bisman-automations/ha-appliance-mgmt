@@ -118,6 +118,10 @@ class KitchenTimerMonitor(_Monitor):
     def remaining(self) -> float:
         return self._last_remaining if self._running else 0.0
 
+    def watching(self) -> bool:
+        """Counting down (drift from the phone's countdown)."""
+        return self._running
+
     async def async_evaluate(self) -> None:
         state = self.hass.states.get(self.entity)
         if state is None or state.state.strip().lower() in UNAVAILABLE_STATES:
@@ -130,6 +134,9 @@ class KitchenTimerMonitor(_Monitor):
 
         if remaining > 0:
             first = not self._running
+            # The status sensor shows the minutes left: write it only when
+            # they change, not on every timed check
+            changed = first or remaining != self._last_remaining
             if first:
                 self._running = True
                 if self._send:
@@ -149,7 +156,8 @@ class KitchenTimerMonitor(_Monitor):
                     countdown_minutes=remaining,
                 )
                 self._sent_remaining, self._sent_at = remaining, now
-            self.coordinator.async_update_listeners()
+            if changed:
+                self.coordinator.async_update_listeners()
             return
 
         if not self._running:
@@ -200,6 +208,10 @@ class ProbeMonitor(_Monitor):
         self._alerted = self._alerted and self.temperature >= self.target > 0
         self._sent_signature = None
         await self.async_evaluate()
+
+    def watching(self) -> bool:
+        """Nothing timed: the probe follows its sensor and the target."""
+        return False
 
     async def async_evaluate(self) -> None:
         state = self.hass.states.get(self.entity)

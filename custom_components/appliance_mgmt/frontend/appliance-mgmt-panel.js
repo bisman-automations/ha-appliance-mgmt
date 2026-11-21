@@ -616,6 +616,21 @@ function pageHidden() {
   return typeof document !== "undefined" && Boolean(document.hidden);
 }
 
+// History points ([seconds, state]) read before, plus the ones read since:
+// newer points only, without repeats of the same state, and nothing older than
+// the last point before `startS` (the state the 24-hour window starts with).
+function mergeHistory(old, fresh, startS) {
+  const merged = old ? old.slice() : [];
+  for (const point of fresh || []) {
+    const last = merged[merged.length - 1];
+    if (last && (point[0] <= last[0] || point[1] === last[1])) continue;
+    merged.push(point);
+  }
+  let first = 0;
+  while (first + 1 < merged.length && merged[first + 1][0] <= startS) first += 1;
+  return first ? merged.slice(first) : merged;
+}
+
 // Every entity id an appliance list mentions, for watching their states.
 function entityIds(value, found = new Set()) {
   if (typeof value === "string") {
@@ -763,12 +778,20 @@ class ApplianceMgmtPanel extends HTMLElement {
     const now = new Date();
     const start = new Date(now.getTime() - 86400000);
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
-    const ids = [...new Set(wanted.flatMap((a) => [...a.temperatures.map((t) => t.entity_id), ...a.door_entities]))];
+    const ids = [...new Set(wanted.flatMap((a) => [...a.temperatures.map((t) => t.entity_id), ...a.door_entities]))].sort();
+    const key = ids.join(",");
+    const startS = start.getTime() / 1000;
+    // After the first read only what changed since the last one is asked for
+    // (with a minute's overlap), not the whole day again every few minutes.
+    const cache = this._history && this._history.key === key && this._history.end > startS ? this._history : null;
+    const from = cache ? new Date((cache.end - 60) * 1000) : start;
+    if (this._trendsBusy) return;
+    this._trendsBusy = true;
     let history;
     try {
       history = await this._hass.callWS({
         type: "history/history_during_period",
-        start_time: start.toISOString(),
+        start_time: from.toISOString(),
         entity_ids: ids,
         minimal_response: true,
         no_attributes: true,
@@ -776,11 +799,18 @@ class ApplianceMgmtPanel extends HTMLElement {
       });
     } catch (err) {
       return; // history not available (recorder off): the card just leaves trends out
+    } finally {
+      this._trendsBusy = false;
     }
-    const points = (id) =>
-      (history?.[id] || [])
+    const kept = {};
+    for (const id of ids) {
+      const fresh = (history?.[id] || [])
         .map((p) => [Number(p.lu ?? p.lc), p.s])
         .filter(([t]) => Number.isFinite(t));
+      kept[id] = mergeHistory(cache?.points[id], fresh, startS);
+    }
+    this._history = { key, end: now.getTime() / 1000, points: kept };
+    const points = (id) => kept[id] || [];
     for (const a of wanted) {
       const zones = {};
       for (const t of a.temperatures) {
