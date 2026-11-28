@@ -178,7 +178,7 @@ async def _async_register_panel_and_static(
 
     if not hass.data.get(DATA_STATIC):
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(STATIC_URL, str(FRONTEND_DIR), cache_headers=False)]
+            [StaticPathConfig(STATIC_URL, str(FRONTEND_DIR), cache_headers=True)]
         )
         hass.data[DATA_STATIC] = True
     await panel_custom.async_register_panel(

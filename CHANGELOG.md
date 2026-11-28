@@ -5,10 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.2.2] - 2026-11-20
+## [2.2.2] - 2026-11-27
 
 ### Changed
 
+- **The dashboard opens faster.** Your browser now keeps the Appliance Mgmt dashboard's script instead of downloading it again every time you open the page. After an update it loads the new one, as before.
 - **Idle appliances rest.** Every appliance used to check itself once a minute, and every fridge and door every 15 seconds, even with nothing going on, updating its sensors each time. Now a washer, dryer, dishwasher or oven only checks on the clock while a cycle runs, a delayed start counts down, a laundry reminder is still to come or the cooktop is on, and a fridge or door only while a door is open. Everything else still reacts the moment the appliance reports a change. **Cycles this week** still counts down on its own when a cycle drops out of the day or the week.
 - **Quieter fridge, filter and probe checks.** The water filter, refill and meat probe checks no longer run on a timer at all (they follow their sensors), the fridge and freezer temperature check runs on the clock only while a zone is too warm, and the oven's kitchen timer updates the status sensor only when its minutes change.
 - **Lighter fridge trends.** The dashboard read the whole last day of fridge temperatures and door history again every five minutes. It now reads the day once and afterwards only what changed since its last look.
